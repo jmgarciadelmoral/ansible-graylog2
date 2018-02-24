@@ -1,0 +1,2 @@
+- name: restart graylog
+  service: name=graylog-server state=restarted

@@ -1,0 +1,84 @@
+---
+- name: Install graylog2 repo 
+  apt:
+    deb: https://packages.graylog2.org/repo/packages/graylog-2.4-repository_latest.deb
+
+- apt:
+    update_cache: yes
+
+- apt: 
+    name: "{{item}}"
+    state: present
+  with_items:
+    - apt-transport-https
+    - graylog-server
+    - pwgen
+
+- shell: |
+    pwgen -N 1 -s 96
+  register: pw
+  tags: configure
+
+- shell: |
+    echo -n {{root_password}} | sha256sum | awk '{print $1}' > /etc/graylog/.root_pw
+  args:
+    creates: /etc/graylog/.root_pw
+  tags: configure
+
+- shell: |
+    cat /etc/graylog/.root_pw
+  register: root_pw
+  tags: configure
+
+- set_fact:
+    password_secret: "{{pw.stdout}}"
+  tags: configure
+
+- set_fact:
+    root_password_sha2: "{{root_pw.stdout}}"
+  tags: configure
+
+- lineinfile:
+    line: "password_secret = {{password_secret}}"
+    regexp: "^password_secret ="
+    dest: /etc/graylog/server/server.conf 
+  tags: configure
+  notify: restart graylog
+
+- lineinfile:
+    line: "root_password_sha2 = {{root_password_sha2}}"
+    regexp: "^root_password_sha2 ="
+    dest: /etc/graylog/server/server.conf 
+  tags: configure
+  notify: restart graylog
+
+- lineinfile:
+    line: "rest_listen_uri = http://{{hostvars[inventory_hostname]['ansible_default_ipv4']['address']}}:12900"
+    regexp: "^rest_listen_uri ="
+    dest: /etc/graylog/server/server.conf 
+  tags: configure
+  notify: restart graylog
+
+- lineinfile:
+    line: "web_listen_uri = http://{{hostvars[inventory_hostname]['ansible_default_ipv4']['address']}}:9000"
+    regexp: "^web_listen_uri ="
+    dest: /etc/graylog/server/server.conf 
+  tags: configure
+  notify: restart graylog
+
+- lineinfile:
+    line: "elasticsearch_cluster_name = {{cluster_name}}"
+    regexp: "^elasticsearch_cluster_name ="
+    insertafter: "#elasticsearch_cluster_name ="
+    dest: /etc/graylog/server/server.conf 
+  tags: configure
+  notify: restart graylog
+
+- blockinfile:
+    block: |
+      elasticsearch_max_docs_per_index = 20000
+      elasticsearch_max_number_of_indices = 20
+      elasticsearch_shards = 1
+      elasticsearch_replicas = 0
+    dest: /etc/graylog/server/server.conf
+  tags: configure
